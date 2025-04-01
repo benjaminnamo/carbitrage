@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Carbitrage - Find Cheap Vehicles & Profit</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 1000px;
+      margin: 40px auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .column {
+      flex: 1;
+    }
+    label, select, input, button {
+      display: block;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #333;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #555;
+    }
+    pre {
+      background: #f4f4f4;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+    h2, h3 {
+      margin-bottom: 0;
+    }
+    .result-section {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .results-column {
+      flex: 1;
+      background: #f9f9f9;
+      padding: 10px;
+      border: 1px solid #ccc;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .highlight {
+      font-weight: bold;
+      background-color: #dff0d8;
+    }
+  </style>
+</head>
+<body>
+  <h2>Car Lookup</h2>
+  <p>Compare vehicles across two cities by make and model. Select country and city for each vehicle, then choose a make and model. You'll get either the cheapest car or the best price-per-km deal depending on the selected mode.</p>
+
+  <div class="row">
+    <div class="column">
+      <strong>Vehicle #1</strong>
+      <label>Country:
+        <select id="country1" onchange="populateCities('city1', this.value)">
+          <option value="ca">Canada</option>
+          <option value="us">US</option>
+        </select>
+      </label>
+      <label>City 1:
+        <select id="city1"></select>
+      </label>
+    </div>
+    <div class="column">
+      <strong>Vehicle #2</strong>
+      <label>Country:
+        <select id="country2" onchange="populateCities('city2', this.value)">
+          <option value="ca">Canada</option>
+          <option value="us">US</option>
+        </select>
+      </label>
+      <label>City 2:
+        <select id="city2"></select>
+      </label>
+    </div>
+  </div>
+
+  <label>Make:
+    <select id="make" onchange="populateModels(this.value)">
+      <option value="">-- Select Make --</option>
+      <option value="honda">Honda</option>
+      <option value="toyota">Toyota</option>
+      <option value="ford">Ford</option>
+      <option value="chevrolet">Chevrolet</option>
+      <option value="nissan">Nissan</option>
+    </select>
+  </label>
+
+  <label>Model:
+    <select id="model">
+      <option value="">-- Select Model --</option>
+    </select>
+  </label>
+
+  <select id="mode">
+    <option value="cheapest">Cheapest Comparison</option>
+    <option value="arbitrage">Arbitrage (price per km)</option>
+  </select>
+
+  <button onclick="run()">Search</button>
+
+  <div id="output"></div>
+
+  <script>
+    const CLUSTER_NODES = {217: 8217, 536: 8536, 657: 8657, 777: 8777, 888: 8888};
+
+    const cityLists = {
+      ca: [
+        "Toronto", "Montreal", "Vancouver", "Calgary", "Edmonton", "Ottawa", 
+        "Winnipeg", "Quebec City", "Hamilton", "Kitchener", "London", "Halifax", 
+        "Victoria", "Windsor", "Saskatoon", "Regina", "St. John's", "Barrie", 
+        "Sherbrooke", "Guelph", "Kingston", "Sudbury", "Trois-Rivières", "Moncton"
+      ],
+      us: [
+        "New York", "Los Angeles", "Chicago", "Houston", "Phoenix", "Philadelphia", 
+        "San Antonio", "San Diego", "Dallas", "San Jose", "Austin", "Jacksonville", 
+        "Fort Worth", "Columbus", "San Francisco", "Charlotte", "Indianapolis", 
+        "Seattle", "Denver", "Washington", "Boston", "El Paso", "Nashville", 
+        "Detroit", "Las Vegas", "Portland", "Memphis", "Oklahoma City", 
+        "Louisville", "Milwaukee", "Baltimore", "Albuquerque", "Tucson", "Fresno", 
+        "Sacramento", "Mesa", "Kansas City", "Atlanta", "Miami", "Raleigh"
+      ]
+    };
+
+    const makeModelMap = {
+      honda: ["Civic", "Accord", "CR-V", "Fit", "Pilot"],
+      toyota: ["Corolla", "Camry", "RAV4", "Prius", "Tacoma"],
+      ford: ["Focus", "Fusion", "Escape", "Mustang", "F-150"],
+      chevrolet: ["Malibu", "Impala", "Equinox", "Cruze", "Silverado"],
+      nissan: ["Altima", "Sentra", "Rogue", "Versa", "Pathfinder"]
+    };
+
+    function populateCities(selectId, countryCode) {
+      const citySelect = document.getElementById(selectId);
+      citySelect.innerHTML = "";
+      cityLists[countryCode].forEach(city => {
+        const opt = document.createElement("option");
+        opt.value = city.toLowerCase();
+        opt.textContent = city;
+        citySelect.appendChild(opt);
+      });
+    }
+
+    function populateModels(make) {
+      const modelSelect = document.getElementById("model");
+      modelSelect.innerHTML = '<option value="">-- Select Model --</option>';
+      if (makeModelMap[make]) {
+        makeModelMap[make].forEach(model => {
+          const opt = document.createElement("option");
+          opt.value = model.toLowerCase();
+          opt.textContent = model;
+          modelSelect.appendChild(opt);
+        });
+      }
+    }
+
+    window.onload = () => {
+      populateCities('city1', 'ca');
+      populateCities('city2', 'ca');
+      populateModels(""); // clear model list on load
+    };
+
+    async function discoverLeader() {
+      for (const [id, port] of Object.entries(CLUSTER_NODES)) {
+        try {
+          const res = await fetch(`http://localhost:${port}/leader`, { timeout: 1000 });
+          const data = await res.json();
+          const leaderId = Number(data.leader_id);
+          if (!isNaN(leaderId) && CLUSTER_NODES[leaderId]) {
+            const healthRes = await fetch(`http://localhost:${CLUSTER_NODES[leaderId]}/health`);
+            if (healthRes.ok) return CLUSTER_NODES[leaderId];
+          }
+        } catch (err) {
+          console.log(`Failed to reach node ${id}: ${err.message}`);
+        }
+      }
+      return null;
+    }
+
+    function renderVehicleList(title, vehicles, highlightCar) {
+      let html = `<div class="results-column"><h3>${title} - ${vehicles.length} vehicles found</h3>`;
+      if (!vehicles.length) {
+        html += `<p>No vehicles found</p></div>`;
+        return html;
+      }
+      html += `<ul>`;
+      vehicles.forEach(car => {
+        if (!car || car.price == null || car.mileage == null || car.price <= 0) return;
+        const label = `${car.year} ${car.make} ${car.model} - $${car.price} (${car.mileage} km)`;
+        const isHighlight = highlightCar && car.year === highlightCar.year && car.make === highlightCar.make && car.model === highlightCar.model && car.price === highlightCar.price && car.mileage === highlightCar.mileage;
+        html += `<li class="${isHighlight ? 'highlight' : ''}">${label}</li>`;
+      });
+      html += `</ul></div>`;
+      return html;
+    }
+
+    async function run() {
+      const country1 = document.getElementById("country1").value;
+      const country2 = document.getElementById("country2").value;
+      const city1 = document.getElementById("city1").value.trim();
+      const city2 = document.getElementById("city2").value.trim();
+      const make = document.getElementById("make").value.trim();
+      const model = document.getElementById("model").value.trim();
+      const mode = document.getElementById("mode").value;
+      const output = document.getElementById("output");
+
+      output.innerHTML = "<p>Finding leader node...</p>";
+
+      const leaderPort = await discoverLeader();
+      if (!leaderPort) {
+        output.innerHTML = "<p>No leader found.</p>";
+        return;
+      }
+
+      const payload = { country: country1, city1, city2, make, model };
+      output.innerHTML = `<p>Contacting leader on port ${leaderPort}...</p>`;
+
+      try {
+        const res = await fetch(`http://localhost:${leaderPort}/client`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          output.innerHTML = `<p>Error: ${data.error}</p>`;
+          return;
+        }
+
+        const cityResults = data.results;
+        const lists = {};
+
+        Object.entries(cityResults).forEach(([city, carList]) => {
+          if (Array.isArray(carList)) {
+            lists[city] = carList;
+          } else if (carList) {
+            lists[city] = [carList];
+          } else {
+            lists[city] = [];
+          }
+        });
+
+        let allCars = Object.values(lists).flat().filter(car => car && typeof car.price === 'number' && car.price > 0);
+        let highlight = null;
+
+        if (mode === "cheapest") {
+          highlight = allCars.reduce((a, b) => a.price < b.price ? a : b, allCars[0]);
+        } else if (mode === "arbitrage") {
+          allCars = allCars.filter(car => typeof car.mileage === 'number' && car.mileage > 0);
+          highlight = allCars.reduce((a, b) => (a.price / a.mileage) < (b.price / b.mileage) ? a : b, allCars[0]);
+        }
+
+        let displayHTML = `<div class="result-section">
+          ${renderVehicleList(city1, lists[city1] || [], highlight)}
+          ${renderVehicleList(city2, lists[city2] || [], highlight)}
+        </div>`;
+
+        if (highlight) {
+          displayHTML += `<p>The cheapest ${highlight.make} ${highlight.model} for sale is in <strong>${highlight.location || highlight.city || "Unknown location"}</strong>. - ${highlight.year} ${highlight.make} ${highlight.model} - $${highlight.price}</p>`;
+        }
+
+        if (mode === "cheapest") {
+          const ratios = {};
+          [city1, city2].forEach(city => {
+            const cars = (lists[city] || []).filter(c => c.price > 0 && c.mileage > 0);
+            const avg = cars.length ? cars.reduce((acc, car) => acc + car.price / car.mileage, 0) / cars.length : Infinity;
+            ratios[city] = avg;
+          });
+
+          const betterCity = ratios[city1] < ratios[city2] ? city1 : city2;
+          displayHTML += `<p>Generally, the cheaper city to buy ${make} ${model} in is <strong>${betterCity.charAt(0).toUpperCase() + betterCity.slice(1)}, ON</strong>.</p>`;
+        }
+
+        output.innerHTML = displayHTML;
+
+      } catch (err) {
+        output.innerHTML = `<p>Failed to contact leader: ${err.message}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

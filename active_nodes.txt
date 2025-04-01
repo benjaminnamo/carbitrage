@@ -1,0 +1,32 @@
+{
+  "217": {
+    "id": 217,
+    "online": false,
+    "role": "replica",
+    "candidate": false
+  },
+  "536": {
+    "id": 536,
+    "online": false,
+    "role": "replica",
+    "candidate": false
+  },
+  "657": {
+    "id": 657,
+    "online": false,
+    "role": "replica",
+    "candidate": false
+  },
+  "777": {
+    "id": 777,
+    "online": false,
+    "role": "replica",
+    "candidate": false
+  },
+  "888": {
+    "id": 888,
+    "online": false,
+    "role": "replica",
+    "candidate": false
+  }
+}
