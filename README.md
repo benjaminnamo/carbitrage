@@ -185,7 +185,4 @@ Open `index.html` in a browser (requires local cluster nodes running).
 
 ## Future Improvements
 
-- Persistent node registry with Redis or SQLite
-- Switch to Raft or Paxos for formal consensus
-- Real-time leader failover with WebSockets
-- Use Docker for deployment and scaling
+- Upgrade to RAFT
