@@ -7,7 +7,7 @@ import requests
 
 from state import NODE_PORT, NODE_ID, CACHE_DIR
 from config import NODE_REGISTRY, CLUSTER_NODES
-from election import heartbeat_loop, discover_leader, update_node_registry
+from raft_instance import raft_node
 from routes import router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
@@ -31,14 +31,11 @@ app.add_middleware(
 # Include routes
 app.include_router(router)
 
-# Ensure cache dir and node registry exist
+# Ensure cache dir exists
 os.makedirs(CACHE_DIR, exist_ok=True)
-if not os.path.exists(NODE_REGISTRY):
-    with open(NODE_REGISTRY, 'w') as f:
-        f.write('{}')
 
-# Mark this node as online
-update_node_registry(NODE_ID, True, False)
+# Initialize node in registry
+raft_node.update_node_registry(NODE_ID, True, False)
 
 @app.post("/reconcile")
 async def reconcile():
@@ -134,9 +131,4 @@ def periodic_replica_discovery():
 
 if __name__ == "__main__":
     time.sleep(1)
-    discover_leader()
-    sync_cache_from_leader()
-    attempt_leader_reconciliation()
-    periodic_replica_discovery()
-    threading.Thread(target=heartbeat_loop, daemon=True).start()
     uvicorn.run(app, host="0.0.0.0", port=NODE_PORT)

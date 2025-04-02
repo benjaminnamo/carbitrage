@@ -3,6 +3,7 @@ import os
 import random
 import sys
 from config import CLUSTER_NODES
+from raft import NodeState
 
 # Assign or verify node identity
 if len(sys.argv) > 1:
@@ -18,19 +19,19 @@ NODE_PORT = CLUSTER_NODES[NODE_ID]
 CACHE_DIR = f"cache/node_{NODE_ID}"
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Leader state
-leader_id = None
-nodes = {}
-last_election = None
+def get_leader():
+    from raft_instance import raft_node
+    if raft_node.state == NodeState.LEADER:
+        return NODE_ID
+    # If we're a follower and have received append entries, return the known leader
+    if hasattr(raft_node, 'current_leader'):
+        return raft_node.current_leader
+    return None
 
 def set_leader(new_id):
-    global leader_id
-    from main import NODE_ID, attempt_leader_reconciliation  # Safe local import to avoid circular import
-    leader_id = new_id
-    if new_id == NODE_ID:
-        print(f"[Leadership] Node {NODE_ID} is now the leader. Initiating reconciliation...")
-        attempt_leader_reconciliation()
-
-
-def get_leader():
-    return leader_id
+    from raft_instance import raft_node
+    if raft_node.state == NodeState.LEADER:
+        raft_node.append_command({
+            "type": "set_leader",
+            "leader_id": new_id
+        })

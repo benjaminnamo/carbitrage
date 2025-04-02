@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, timedelta
 from config import API_KEY, BASE_URL, HEADERS
 from state import CACHE_DIR, NODE_ID, CLUSTER_NODES
+from raft_instance import raft_node
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -74,22 +75,16 @@ def replicate_to_followers(filepath, filename):
     try:
         with open(filepath, "rb") as f:
             file_data = f.read()
-        for nid, port in CLUSTER_NODES.items():
-            if nid == NODE_ID:
-                continue
-            try:
-                res = requests.post(
-                    f"http://localhost:{port}/replicate",
-                    files={"file": (filename, file_data)},
-                    data={"filename": filename},
-                    timeout=5
-                )
-                if res.status_code == 200:
-                    print(f"[Replication] Sent '{filename}' to Node {nid}")
-            except Exception as e:
-                print(f"[Replication Error] Node {nid}: {e}")
+        
+        # Use RAFT to replicate the file
+        raft_node.append_command({
+            "type": "replicate_file",
+            "filename": filename,
+            "data": file_data.decode()
+        })
+        
     except Exception as e:
-        print(f"[Replication Error] Failed to open file '{filename}': {e}")
+        print(f"[Replication Error] Failed to replicate file '{filename}': {e}")
 
 def replicate_all_to_new_node(new_node_port):
     for fname in os.listdir(CACHE_DIR):

@@ -5,6 +5,7 @@ from config import CLUSTER_NODES
 from models import FetchRequest, ClientRequest
 from car_fetching import fetch_cars, save_to_csv
 from state import NODE_ID, get_leader, set_leader, CACHE_DIR
+from raft_instance import raft_node
 
 router = APIRouter()
 
@@ -142,3 +143,13 @@ async def reconcile_route(request: Request):
             print(f"[Reconcile] Error processing file from Node {nid}: {e}")
 
     return JSONResponse({"status": "ok", "updated": updates})
+
+@router.post("/raft/append_entries")
+async def append_entries(request: Request):
+    data = await request.json()
+    return raft_node.handle_append_entries(data)
+
+@router.post("/raft/request_vote")
+async def request_vote(request: Request):
+    data = await request.json()
+    return raft_node.handle_request_vote(data)
