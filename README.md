@@ -1,9 +1,8 @@
-
 # Carbitrage - Distributed Car Arbitrage System
 
 ## Overview
 
-This project is a distributed vehicle arbitrage system designed to find the best vehicle deals across multiple cities, based on either **lowest price** or **best price-per-kilometer ratio**. It operates as a fault-tolerant, leader-based cluster of nodes using the **Bully Election Algorithm**, file replication, and reconciliation strategies to ensure consistency and reliability.
+This project is a distributed vehicle arbitrage system designed to find the best vehicle deals across multiple cities, based on either **lowest price** or **best price-per-kilometer ratio**. It operates as a fault-tolerant, leader-based cluster of nodes using the **RAFT Consensus Algorithm**, file replication, and reconciliation strategies to ensure consistency and reliability.
 
 The system consists of:
 - A frontend web interface and CLI client
@@ -43,55 +42,49 @@ Nodes are tracked in a registry (`active_nodes.txt`) with their:
 
 ## Core Distributed Systems Components
 
-### 1. Leader Election
+### 1. Leader Election (RAFT Implementation)
 
-- **Algorithm**: [Bully Algorithm](https://en.wikipedia.org/wiki/Bully_algorithm)
-- **Trigger**: When no leader is found or the leader becomes unresponsive
-- **Priority**: Nodes with higher IDs have higher priority
+- **Algorithm**: [RAFT Consensus](https://raft.github.io/)
+- **Terms**: Time is divided into terms, each beginning with an election
+- **Election Process**: 
+  - Nodes start as followers
+  - If no heartbeat received within timeout (2-4 seconds), become candidate
+  - Candidates request votes from other nodes
+  - First candidate to receive majority votes becomes leader
+  - Leaders maintain authority through periodic heartbeats
 
-Each node can:
-- Initiate an election if it doesn't detect a valid leader
-- Ping higher-ID nodes before declaring itself as leader
-- Accept the higher-ID node as leader if it responds
-- Notify all other nodes upon becoming leader
+Each node:
+- Maintains a current term number
+- Votes for at most one candidate per term
+- Steps down if it discovers a higher term
+- Replicates log entries when leader
 
-Implemented in [`election.py`](./election.py) and orchestrated during node startup in [`main.py`](./main.py).
+Implemented in `raft.py` and coordinated through `raft_instance.py`.
 
----
+### 2. Log Replication & Consensus
 
-### 2. Heartbeat & Fault Detection
+- Leaders maintain a log of commands (file operations, leader changes)
+- Each log entry contains:
+  - Command data
+  - Term number when entry was received
+  - Index in the log
+- Leaders replicate entries to followers through AppendEntries RPCs
+- Entries become committed when replicated to majority of nodes
+- State machine executes committed entries in order
 
-- Nodes continuously check if the current leader is alive via periodic `GET /health` requests
-- If the leader is unresponsive for more than 5 seconds, an election is triggered
-- Heartbeats are tracked using the `nodes` dictionary with timestamps
+### 3. Safety Properties
 
-This loop runs in a background thread started in `main.py` and managed by `election.heartbeat_loop()`.
+- **Election Safety**: At most one leader per term
+- **Leader Append-Only**: Leaders never overwrite or delete entries
+- **Log Matching**: If logs contain an entry with same index and term, logs are identical up to that point
+- **Leader Completeness**: Committed entries survive leader changes
+- **State Machine Safety**: All nodes execute same commands in same order
 
----
+### 4. RAFT RPCs
 
-### 3. Data Replication
-
-- The leader replicates fetched car listings to all replicas by sending `.csv` files via HTTP POST to `/replicate`
-- Replicas store these files in their local `cache/node_<id>` directories
-- New nodes sync the full cache from the current leader using `/list-cache` and `/get-cache-file` APIs
-
-See `car_fetching.replicate_to_followers()` and `main.sync_cache_from_leader()`.
-
----
-
-### 4. Reconciliation
-
-- To maintain consistency, the leader periodically initiates a reconciliation process
-- Each node is asked to list its cache contents and provide modification times
-- The leader pulls any newer or missing files from replicas
-
-Leader-triggered reconciliation is exposed via:
-- `POST /reconcile` endpoint
-- Periodic background thread (`periodic_replica_discovery`)
-
-All logic lives in `main.py` and `routes.py`.
-
----
+- **RequestVote**: Used by candidates during elections
+- **AppendEntries**: Used by leader for log replication and heartbeats
+- Both include term numbers for maintaining consistency
 
 ### 5. Fault Tolerance & Shutdown
 
@@ -109,6 +102,8 @@ All logic lives in `main.py` and `routes.py`.
 - `GET /list-cache`, `GET /cache-meta`, `GET /get-cache-file`: Support cache introspection
 - `POST /set-leader`: Informs replicas of new leader
 - `POST /reconcile`: Leader pulls newer files from replicas
+- `POST /raft/append_entries`: Handles log replication and heartbeats
+- `POST /raft/request_vote`: Handles vote requests during elections
 
 ---
 
@@ -129,7 +124,7 @@ In `index.html`, the user can:
 - View the best vehicle listings from both cities
 - See visual highlights and purchase recommendations
 
-It communicates with the backend leader node through JavaScript’s `fetch()`.
+It communicates with the backend leader node through JavaScript's `fetch()`.
 
 ---
 
@@ -146,11 +141,17 @@ Save/load: `save_to_csv`, `load_from_csv`
 
 ## Node Startup Flow
 
-    1. Node boots and selects its ID (via command line or randomly)
-    2. Checks for an existing leader using `discover_leader()`
-    3. If none found, initiates election using `initiate_bully_election()`
-    4. If elected leader, begins cache reconciliation
-    5. If replica, syncs cache from leader
+1. Node boots and selects its ID (via command line or randomly)
+2. Initializes as RAFT follower
+3. Participates in leader election if no heartbeat received
+4. If elected leader:
+   - Begins sending heartbeats
+   - Handles client requests
+   - Manages log replication
+5. If follower:
+   - Responds to RPCs from leader
+   - Monitors for leader timeout
+   - Syncs cache from leader
 
 ---
 
@@ -160,7 +161,7 @@ Save/load: `save_to_csv`, `load_from_csv`
 - FastAPI (REST API)
 - Uvicorn (ASGI server)
 - JavaScript (Frontend)
-- Bully Algorithm (Custom Implementation)
+- RAFT Consensus Algorithm (Custom Implementation)
 - JSON file-based coordination (`active_nodes.txt`)
 - MarketCheck API (for car data)
 
@@ -168,9 +169,11 @@ Save/load: `save_to_csv`, `load_from_csv`
 
 ## Example Usage
 
-To start a node:
+To start three nodes (minimum for fault tolerance):
 ```bash
 python main.py 217
+python main.py 536
+python main.py 657
 ```
 
 To start a client:
@@ -183,6 +186,14 @@ Open `index.html` in a browser (requires local cluster nodes running).
 
 ---
 
-## Future Improvements
+## Implementation Details
 
-- Upgrade to RAFT
+### Term Persistence
+- Terms are persisted to disk in `term_<node_id>.txt`
+- Prevents term reset on node restart
+- Maintains RAFT safety properties
+
+### Timeout Configuration
+- Election timeout: 2-4 seconds (randomized)
+- Heartbeat interval: 0.5 seconds
+- Configurable in `raft.py`
