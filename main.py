@@ -39,6 +39,7 @@ raft_node.update_node_registry(NODE_ID, True, False)
 
 @app.post("/reconcile")
 async def reconcile():
+    # Leader reconciliation with replicas
     print(f"[Reconcile] Leader {NODE_ID} initiating reconciliation with replicas...")
     for nid, port in CLUSTER_NODES.items():
         if nid == NODE_ID:
@@ -83,6 +84,7 @@ async def reconcile():
     return {"status": "done"}
 
 def sync_cache_from_leader():
+    # Sync cache from leader node
     from state import get_leader
     leader_id = get_leader()
     if leader_id is None or leader_id == NODE_ID:
@@ -109,6 +111,7 @@ def sync_cache_from_leader():
         print(f"[Sync Error] {e}")
 
 def attempt_leader_reconciliation():
+    # Trigger reconciliation if this node is leader
     from state import get_leader
     current_leader = get_leader()
     if current_leader != NODE_ID:
@@ -120,6 +123,7 @@ def attempt_leader_reconciliation():
         print(f"[Reconcile Error] Failed to initiate: {e}")
 
 def periodic_replica_discovery():
+    # Background thread for replica discovery
     def check_for_new_nodes():
         while True:
             time.sleep(10)

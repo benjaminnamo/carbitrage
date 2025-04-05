@@ -9,12 +9,14 @@ from raft_instance import raft_node
 
 os.makedirs(CACHE_DIR, exist_ok=True)
 
+# Check if cached file is recent
 def is_recent(file_path, hours=24):
     if not os.path.exists(file_path):
         return False
     modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
     return datetime.now() - modified_time < timedelta(hours=hours)
 
+# Fetch car listings from API
 def fetch_cars(country, city, make, model_keyword, max_cars=500, rows_per_request=50):
     filename = f"{make.lower()}_{model_keyword.lower()}_{city.lower()}.csv"
     filepath = os.path.join(CACHE_DIR, filename)
@@ -71,6 +73,7 @@ def fetch_cars(country, city, make, model_keyword, max_cars=500, rows_per_reques
     replicate_to_followers(filepath, filename)
     return cars
 
+# Replicate file to follower nodes
 def replicate_to_followers(filepath, filename):
     try:
         with open(filepath, "rb") as f:
@@ -86,6 +89,7 @@ def replicate_to_followers(filepath, filename):
     except Exception as e:
         print(f"[Replication Error] Failed to replicate file '{filename}': {e}")
 
+# Sync all files to new node
 def replicate_all_to_new_node(new_node_port):
     for fname in os.listdir(CACHE_DIR):
         fpath = os.path.join(CACHE_DIR, fname)
@@ -104,12 +108,14 @@ def replicate_all_to_new_node(new_node_port):
         except Exception as e:
             print(f"[Sync Error] Sending '{fname}' to port {new_node_port}: {e}")
 
+# Save cars to CSV
 def save_to_csv(cars, filename):
     with open(filename, mode='w', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=["year", "make", "model", "price", "mileage", "location"])
         writer.writeheader()
         writer.writerows(cars)
 
+# Load cars from CSV
 def load_from_csv(filename):
     cars = []
     with open(filename, mode='r', newline='') as file:

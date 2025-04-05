@@ -1,6 +1,7 @@
 import requests
 from models import ClientRequest
 
+# Node configuration
 CLUSTER_NODES = {
     217: 8217,
     536: 8536,
@@ -9,6 +10,7 @@ CLUSTER_NODES = {
     888: 8888
 }
 
+# Verify single leader exists
 def verify_unique_leader():
     confirmed_leaders = set()
     for node_id, port in CLUSTER_NODES.items():
@@ -25,6 +27,7 @@ def verify_unique_leader():
     print(f"[Client] Conflicting leader reports: {confirmed_leaders}")
     return None
 
+# Find active leader node
 def discover_current_leader():
     for node_id, port in CLUSTER_NODES.items():
         try:
@@ -43,6 +46,7 @@ def discover_current_leader():
     print("[Client] No leader found.")
     return None, None
 
+# Compare cheapest cars between cities
 def run_cheapest_lookup(leader_port):
     country = input("Enter country (e.g., CA): ").strip()
     city1 = input("Enter first city: ").strip()
@@ -84,6 +88,7 @@ def run_cheapest_lookup(leader_port):
     except Exception as e:
         print(f"[Client] Failed to contact leader: {e}")
 
+# Compare price per km between cities
 def run_arbitrage_lookup(leader_port):
     country = input("Enter country (e.g., CA): ").strip()
     city1 = input("Enter first city: ").strip()
@@ -128,6 +133,7 @@ def run_arbitrage_lookup(leader_port):
     except Exception as e:
         print(f"[Client] Failed to contact leader: {e}")
 
+# Main client loop
 def main():
     while True:
         leader_id, leader_port = discover_current_leader()

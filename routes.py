@@ -9,14 +9,17 @@ from raft_instance import raft_node
 
 router = APIRouter()
 
+# Health check endpoint
 @router.get("/health")
 def health():
     return {"status": "ok", "node_id": NODE_ID}
 
+# Get current leader
 @router.get("/leader")
 def get_leader_route():
     return {"leader_id": get_leader(), "this_node": NODE_ID}
 
+# Fetch cars from single city
 @router.post("/fetch")
 def fetch(data: FetchRequest):
     cars = fetch_cars(
@@ -27,6 +30,7 @@ def fetch(data: FetchRequest):
     )
     return {"num_cars": len(cars), "city": data.city, "model": data.model}
 
+# Compare car prices between cities
 @router.post("/client")
 def client_entry(data: ClientRequest):
     if NODE_ID != get_leader():
@@ -43,6 +47,7 @@ def client_entry(data: ClientRequest):
         }
     }
 
+# Update cluster leader
 @router.post("/set-leader")
 async def set_leader_route(request: Request):
     body = await request.json()
@@ -51,7 +56,7 @@ async def set_leader_route(request: Request):
     print(f"[Leader Update] New leader set to Node {new_leader}")
     return {"message": f"Leader updated to {new_leader}"}
 
-
+# Cache replication
 @router.post("/replicate")
 async def replicate_cache(file: UploadFile = File(...), filename: str = Form(...)):
     try:
@@ -67,7 +72,7 @@ async def replicate_cache(file: UploadFile = File(...), filename: str = Form(...
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-
+# Cache management endpoints
 @router.get("/list-cache")
 def list_cache_files():
     files = [f for f in os.listdir(CACHE_DIR) if f.endswith(".csv")]
@@ -88,6 +93,7 @@ def get_cache_meta(filename: str):
         return {"filename": filename, "mtime": os.path.getmtime(filepath)}
     return {"error": "File not found"}, 404
 
+# Cache reconciliation
 @router.post("/reconcile")
 async def reconcile_route(request: Request):
     import requests
@@ -144,6 +150,7 @@ async def reconcile_route(request: Request):
 
     return JSONResponse({"status": "ok", "updated": updates})
 
+# Raft protocol endpoints
 @router.post("/raft/append_entries")
 async def append_entries(request: Request):
     data = await request.json()
